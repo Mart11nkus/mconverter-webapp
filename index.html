@@ -341,12 +341,119 @@ document.querySelectorAll(".formats button").forEach(btn=>{
   };
 });
 
-// link convert -> sendData to bot (как раньше)
-document.getElementById("btnLink").onclick = ()=>{
+// Универсальный poll (и для файла, и для ссылки)
+async function pollJob(jobId){
+  const tick = async ()=>{
+    try{
+      const r = await fetch(`${API_BASE}/job-status/${jobId}`);
+      const j = await r.json();
+
+      if(j.status === "queued"){
+        setStatus("В очереди…");
+        setProgress(30);
+        setTimeout(tick, 1200);
+        return;
+      }
+      if(j.status === "downloading"){
+        setStatus("Скачиваю по ссылке…");
+        setProgress(40);
+        setTimeout(tick, 1200);
+        return;
+      }
+      if(j.status === "downloaded"){
+        setStatus("Скачано ✅");
+        setProgress(55);
+        setTimeout(tick, 1000);
+        return;
+      }
+      if(j.status === "preparing_cover"){
+        setStatus("Готовлю обложку…");
+        setProgress(60);
+        setTimeout(tick, 1000);
+        return;
+      }
+      if(j.status === "embedding_cover"){
+        setStatus("Вшиваю обложку…");
+        setProgress(70);
+        setTimeout(tick, 1000);
+        return;
+      }
+      if(j.status === "converting"){
+        setStatus("Конвертирую…");
+        setProgress(75);
+        setTimeout(tick, 1200);
+        return;
+      }
+      if(j.status === "sending"){
+        setStatus("Отправляю в чат…");
+        setProgress(90);
+        setTimeout(tick, 1200);
+        return;
+      }
+      if(j.status === "done"){
+        setStatus("Готово ✅ Проверь чат");
+        setProgress(100);
+        setTimeout(()=>{ resetProgress(); }, 1200);
+        return;
+      }
+      if(j.status === "error"){
+        setStatus("Ошибка ❌ " + (j.error ? String(j.error).slice(0, 140) : ""));
+        resetProgress();
+        return;
+      }
+
+      setTimeout(tick, 1500);
+    }catch(e){
+      setTimeout(tick, 2000);
+    }
+  };
+
+  setTimeout(tick, 900);
+}
+
+// LINK convert -> backend /download-by-url -> bot sends mp3
+document.getElementById("btnLink").onclick = async ()=>{
   const link = document.getElementById("link").value.trim();
   if(!link){ setStatus("Вставь ссылку"); return; }
-  setStatus("Отправляю боту…");
-  tg?.sendData?.(JSON.stringify({platform, format, link}));
+
+  // пока бекенд у нас делает MP3, mp4 кнопка это просто UI
+  if(format !== "mp3"){
+    setStatus("Сейчас по ссылке доступно только MP3. Выбери MP3.");
+    return;
+  }
+
+  const initData = window.Telegram?.WebApp?.initData || "";
+  if(!initData){
+    setStatus("Открой из Telegram");
+    return;
+  }
+
+  setStatus("Отправляю ссылку…");
+  resetProgress();
+  setProgress(15);
+
+  const form = new FormData();
+  form.append("url", link);
+  form.append("init_data", initData);
+
+  try{
+    const res = await fetch(`${API_BASE}/download-by-url`, { method:"POST", body: form });
+    const data = await res.json().catch(()=> ({}));
+    if(!res.ok){
+      setStatus("Ошибка сервера: " + (data.detail || "unknown"));
+      resetProgress();
+      return;
+    }
+
+    const jobId = data.job_id;
+    setStatus(`Принято ✅ Жди в чате (${platform})`);
+    setProgress(22);
+
+    pollJob(jobId);
+  }catch(e){
+    setStatus("Ошибка сети");
+    resetProgress();
+  }
 };
 
 // file convert -> backend queues job -> bot sends mp3
@@ -382,13 +489,13 @@ btnFile.addEventListener("click", async ()=>{
 
   try{
     const res = await fetch(`${API_BASE}/upload-mp4`, { method:"POST", body: form });
+    const data = await res.json().catch(()=> ({}));
     if(!res.ok){
-      setStatus("Ошибка сервера");
+      setStatus("Ошибка сервера: " + (data.detail || "unknown"));
       resetProgress();
       btnFile.disabled = false;
       return;
     }
-    const data = await res.json();
     jobId = data.job_id;
 
     setStatus("Принято ✅ Жди в чате");
@@ -430,13 +537,12 @@ btnFile.addEventListener("click", async ()=>{
         return;
       }
       if(j.status === "error"){
-        setStatus("Ошибка ❌");
+        setStatus("Ошибка ❌ " + (j.error ? String(j.error).slice(0, 140) : ""));
         resetProgress();
         btnFile.disabled = false;
         return;
       }
 
-      // fallback
       setTimeout(poll, 1500);
     }catch(e){
       setTimeout(poll, 2000);
