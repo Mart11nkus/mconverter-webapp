@@ -28,7 +28,6 @@ body{
   overflow:auto;
 }
 
-/* ===== BACKGROUND ===== */
 .bg{
   position:fixed;
   inset:0;
@@ -45,7 +44,6 @@ body{
     linear-gradient(to bottom, rgba(0,0,0,.12), rgba(0,0,0,.28));
 }
 
-/* ===== NOISE ===== */
 .noise{
   position:fixed;
   inset:0;
@@ -56,7 +54,6 @@ body{
   mix-blend-mode:overlay;
 }
 
-/* ===== CINEMATIC GLITCH ===== */
 .glitchWrap{
   position:fixed;
   inset:0;
@@ -114,7 +111,6 @@ body{
   100%{opacity:0; transform:translate(0,0)}
 }
 
-/* ===== LAYOUT ===== */
 .container{
   position:relative;
   z-index:3;
@@ -140,7 +136,6 @@ body{
   .container{ padding-top:12px; }
 }
 
-/* ===== CARDS ===== */
 .card{
   background:var(--card);
   border:1px solid var(--stroke);
@@ -223,7 +218,6 @@ input{
   text-align:center;
 }
 
-/* progress */
 .progressWrap{
   width:100%;
   height:8px;
@@ -305,7 +299,7 @@ input{
 </div>
 
 <script>
-const API_BASE = "https://mconverter-backend.onrender.com";
+const API_BASE = "http://85.193.81.19:3000";
 const tg = window.Telegram?.WebApp;
 if(tg){ tg.expand(); tg.ready?.(); }
 
@@ -341,92 +335,28 @@ document.querySelectorAll(".formats button").forEach(btn=>{
   };
 });
 
-// Универсальный poll (и для файла, и для ссылки)
 async function pollJob(jobId){
   const tick = async ()=>{
     try{
       const r = await fetch(`${API_BASE}/job-status/${jobId}`);
       const j = await r.json();
-
-      if(j.status === "queued"){
-        setStatus("В очереди…");
-        setProgress(30);
-        setTimeout(tick, 1200);
-        return;
-      }
-      if(j.status === "downloading"){
-        setStatus("Скачиваю по ссылке…");
-        setProgress(40);
-        setTimeout(tick, 1200);
-        return;
-      }
-      if(j.status === "downloaded"){
-        setStatus("Скачано ✅");
-        setProgress(55);
-        setTimeout(tick, 1000);
-        return;
-      }
-      if(j.status === "preparing_cover"){
-        setStatus("Готовлю обложку…");
-        setProgress(60);
-        setTimeout(tick, 1000);
-        return;
-      }
-      if(j.status === "embedding_cover"){
-        setStatus("Вшиваю обложку…");
-        setProgress(70);
-        setTimeout(tick, 1000);
-        return;
-      }
-      if(j.status === "converting"){
-        setStatus("Конвертирую…");
-        setProgress(75);
-        setTimeout(tick, 1200);
-        return;
-      }
-      if(j.status === "sending"){
-        setStatus("Отправляю в чат…");
-        setProgress(90);
-        setTimeout(tick, 1200);
-        return;
-      }
-      if(j.status === "done"){
-        setStatus("Готово ✅ Проверь чат");
-        setProgress(100);
-        setTimeout(()=>{ resetProgress(); }, 1200);
-        return;
-      }
-      if(j.status === "error"){
-        setStatus("Ошибка ❌ " + (j.error ? String(j.error).slice(0, 140) : ""));
-        resetProgress();
-        return;
-      }
-
-      setTimeout(tick, 1500);
-    }catch(e){
-      setTimeout(tick, 2000);
-    }
+      if(j.status==="queued"){ setStatus("В очереди…"); setProgress(30); setTimeout(tick,1200); return; }
+      if(j.status==="downloading"){ setStatus("Скачиваю…"); setProgress(40); setTimeout(tick,1200); return; }
+      if(j.status==="sending"){ setStatus("Отправляю в чат…"); setProgress(90); setTimeout(tick,1200); return; }
+      if(j.status==="done"){ setStatus("Готово ✅ Проверь чат"); setProgress(100); setTimeout(()=>{ resetProgress(); },1200); return; }
+      if(j.status==="error"){ setStatus("Ошибка ❌ "+(j.error?String(j.error).slice(0,140):"")); resetProgress(); return; }
+      setTimeout(tick,1500);
+    }catch(e){ setTimeout(tick,2000); }
   };
-
-  setTimeout(tick, 900);
+  setTimeout(tick,900);
 }
 
-// LINK convert -> backend /download-by-url -> bot sends mp3
 document.getElementById("btnLink").onclick = async ()=>{
   const link = document.getElementById("link").value.trim();
   if(!link){ setStatus("Вставь ссылку"); return; }
-
-  // пока бекенд у нас делает MP3, mp4 кнопка это просто UI
-  if(format !== "mp3"){
-    setStatus("Сейчас по ссылке доступно только MP3. Выбери MP3.");
-    return;
-  }
-
+  if(format !== "mp3"){ setStatus("Сейчас по ссылке доступно только MP3. Выбери MP3."); return; }
   const initData = window.Telegram?.WebApp?.initData || "";
-  if(!initData){
-    setStatus("Открой из Telegram");
-    return;
-  }
+  if(!initData){ setStatus("Открой из Telegram"); return; }
 
   setStatus("Отправляю ссылку…");
   resetProgress();
@@ -438,25 +368,17 @@ document.getElementById("btnLink").onclick = async ()=>{
 
   try{
     const res = await fetch(`${API_BASE}/download-by-url`, { method:"POST", body: form });
-    const data = await res.json().catch(()=> ({}));
-    if(!res.ok){
-      setStatus("Ошибка сервера: " + (data.detail || "unknown"));
-      resetProgress();
-      return;
-    }
-
-    const jobId = data.job_id;
-    setStatus(`Принято ✅ Жди в чате (${platform})`);
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ setStatus("Ошибка сервера: "+(data.detail||"unknown")); resetProgress(); return; }
+    setStatus("Принято ✅ Жди в чате");
     setProgress(22);
-
-    pollJob(jobId);
+    pollJob(data.job_id);
   }catch(e){
     setStatus("Ошибка сети");
     resetProgress();
   }
 };
 
-// file convert -> backend queues job -> bot sends mp3
 const fileInput = document.getElementById("mp4file");
 const btnFile = document.getElementById("btnFile");
 let selectedFile = null;
@@ -470,12 +392,8 @@ fileInput.addEventListener("change", ()=>{
 
 btnFile.addEventListener("click", async ()=>{
   if(!selectedFile) return;
-
   const initData = window.Telegram?.WebApp?.initData || "";
-  if(!initData){
-    setStatus("Открой из Telegram");
-    return;
-  }
+  if(!initData){ setStatus("Открой из Telegram"); return; }
 
   btnFile.disabled = true;
   setStatus("Отправляю файл…");
@@ -485,74 +403,21 @@ btnFile.addEventListener("click", async ()=>{
   form.append("file", selectedFile, selectedFile.name);
   form.append("init_data", initData);
 
-  let jobId = null;
-
   try{
     const res = await fetch(`${API_BASE}/upload-mp4`, { method:"POST", body: form });
-    const data = await res.json().catch(()=> ({}));
-    if(!res.ok){
-      setStatus("Ошибка сервера: " + (data.detail || "unknown"));
-      resetProgress();
-      btnFile.disabled = false;
-      return;
-    }
-    jobId = data.job_id;
-
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ setStatus("Ошибка сервера: "+(data.detail||"unknown")); resetProgress(); btnFile.disabled=false; return; }
     setStatus("Принято ✅ Жди в чате");
     setProgress(25);
+    pollJob(data.job_id);
   }catch(e){
     setStatus("Ошибка сети");
     resetProgress();
-    btnFile.disabled = false;
-    return;
+    btnFile.disabled=false;
   }
-
-  const poll = async ()=>{
-    try{
-      const r = await fetch(`${API_BASE}/job-status/${jobId}`);
-      const j = await r.json();
-
-      if(j.status === "queued"){
-        setStatus("В очереди…");
-        setProgress(35);
-        setTimeout(poll, 1200);
-        return;
-      }
-      if(j.status === "converting"){
-        setStatus("Конвертирую…");
-        setProgress(65);
-        setTimeout(poll, 1200);
-        return;
-      }
-      if(j.status === "sending"){
-        setStatus("Отправляю в чат…");
-        setProgress(85);
-        setTimeout(poll, 1200);
-        return;
-      }
-      if(j.status === "done"){
-        setStatus("Готово ✅ Проверь чат");
-        setProgress(100);
-        setTimeout(()=>{ resetProgress(); btnFile.disabled=false; }, 1200);
-        return;
-      }
-      if(j.status === "error"){
-        setStatus("Ошибка ❌ " + (j.error ? String(j.error).slice(0, 140) : ""));
-        resetProgress();
-        btnFile.disabled = false;
-        return;
-      }
-
-      setTimeout(poll, 1500);
-    }catch(e){
-      setTimeout(poll, 2000);
-    }
-  };
-
-  setTimeout(poll, 900);
 });
 
-// glitch (твой)
+// glitch
 const scanlines = document.getElementById("scanlines");
 const slice = document.getElementById("slice");
 const shake = document.getElementById("shake");
@@ -560,24 +425,23 @@ const shake = document.getElementById("shake");
 function play(el, anim, dur){
   el.style.animation="none";
   void el.offsetWidth;
-  el.style.animation = `${anim} ${dur}ms ease-out`;
-  setTimeout(()=> el.style.animation="none", dur + 40);
+  el.style.animation=`${anim} ${dur}ms ease-out`;
+  setTimeout(()=> el.style.animation="none", dur+40);
 }
 function glitch(){
-  play(shake, "shakeIt", 260 + Math.random()*220);
-  play(scanlines, "linesPop", 260 + Math.random()*240);
-  slice.style.top = (18 + Math.random()*62) + "%";
-  slice.style.height = (50 + Math.random()*110) + "px";
-  play(slice, "sliceMove", 220 + Math.random()*220);
-
-  if(Math.random() > 0.65){
+  play(shake,"shakeIt",260+Math.random()*220);
+  play(scanlines,"linesPop",260+Math.random()*240);
+  slice.style.top=(18+Math.random()*62)+"%";
+  slice.style.height=(50+Math.random()*110)+"px";
+  play(slice,"sliceMove",220+Math.random()*220);
+  if(Math.random()>0.65){
     setTimeout(()=>{
-      play(shake, "shakeIt", 220 + Math.random()*200);
-      play(scanlines, "linesPop", 220 + Math.random()*220);
-    }, 140 + Math.random()*220);
+      play(shake,"shakeIt",220+Math.random()*200);
+      play(scanlines,"linesPop",220+Math.random()*220);
+    },140+Math.random()*220);
   }
 }
-setInterval(()=>{ if(Math.random() > 0.45) glitch(); }, 1400);
+setInterval(()=>{ if(Math.random()>0.45) glitch(); },1400);
 </script>
 
 </body>
